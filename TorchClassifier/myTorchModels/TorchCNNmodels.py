@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import os
 import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
@@ -87,10 +88,44 @@ def createTorchCNNmodel(name, numclasses, img_shape, pretrained=True):
         return create_resnetmodel1(numclasses, img_shape)
     elif name=='customresnet':
         return setupCustomResNet(numclasses, 'resnet50')
+    elif name=='customEfficientNet':
+        return create_customEfficientNet()
     elif name in model_names:
         #return models.__dict__[name](pretrained=pretrained)
         #return create_torchvisionmodel(name, numclasses, pretrained)
         return create_torchvisionmodel(name, numclasses, freezeparameters=True, pretrained=pretrained)
+
+os.environ['TORCH_HOME'] = '/Users/SahajT/Github/Homework-MultiModalClassifier/TorchClassifier'
+efficientnet = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_efficientnet_b0', pretrained=True)
+
+
+class CustomEfficientNet(nn.Module):
+    def __init__(self, original_model):
+        super(CustomEfficientNet, self).__init__()
+        self.features = nn.Sequential(*list(original_model.children())[:-1])
+
+        self.dropout = nn.Dropout(0.5)
+
+        self.fc1 = nn.Linear(1280 * 7 * 7, 512)
+
+        self.fc2 = nn.Linear(512, 2)
+
+    def forward(self, x):
+        x = self.features(x)
+
+        x = torch.flatten(x, 1)
+
+        x = self.dropout(x)
+
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+
+        return x
+
+def create_customEfficientNet():
+    # Load the pre-trained EfficientNet B0 model
+    model = CustomEfficientNet(efficientnet)
+    return model
 
 def create_vggmodel1(numclasses, img_shape):
     # Load the pretrained model from pytorch
@@ -273,7 +308,7 @@ class MLP(nn.Module): #for MNIST dataset
         super().__init__()
         #three linear layers
         #take the input batch of images and flatten them so they can be passed into the linear layers
-        self.input_fc = nn.Linear(input_dim, 250) #hidden dimensions of 250 elements
+        self.input_fc = nn.Linear(input_dim*3, 250) #for rgb
         self.hidden_fc = nn.Linear(250, 100) #hidden dimensions of 100 elements
         self.output_fc = nn.Linear(100, output_dim)
         
@@ -311,65 +346,20 @@ class LeNet(nn.Module):#for 28*28 MNIST dataset
     def __init__(self, output_dim):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(in_channels = 1, 
-                               out_channels = 6, 
-                               kernel_size = 5)
-        
-        self.conv2 = nn.Conv2d(in_channels = 6, 
-                               out_channels = 16, 
-                               kernel_size = 5)
-        
-        self.fc_1 = nn.Linear(16 * 4 * 4, 120)
+        self.conv1 = nn.Conv2d(3, 6, kernel_size=5, stride=1)  # Changed from 1 to 3 input channels
+        self.conv2 = nn.Conv2d(6, 16, kernel_size=5, stride=1)
+        self.fc_1 = nn.Linear(16 * 4 * 4, 120)  # Adjust the input size if necessary based on new image dimensions
         self.fc_2 = nn.Linear(120, 84)
         self.fc_3 = nn.Linear(84, output_dim)
 
     def forward(self, x):
-
-        #x = [batch size, 1, 28, 28]
-        
-        x = self.conv1(x)
-        
-        #x = [batch size, 6, 24, 24]
-        
-        x = F.max_pool2d(x, kernel_size = 2)
-        
-        #x = [batch size, 6, 12, 12]
-        
-        x = F.relu(x)
-        
-        x = self.conv2(x)
-        
-        #x = [batch size, 16, 8, 8]
-        
-        x = F.max_pool2d(x, kernel_size = 2)
-        
-        #x = [batch size, 16, 4, 4]
-        
-        x = F.relu(x)
-        
-        x = x.view(x.shape[0], -1)
-        
-        #x = [batch size, 16*4*4 = 256]
-        
-        h = x
-        
-        x = self.fc_1(x)
-        
-        #x = [batch size, 120]
-        
-        x = F.relu(x)
-
-        x = self.fc_2(x)
-        
-        #x = batch size, 84]
-        
-        x = F.relu(x)
-
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc_1(x))
+        x = F.relu(self.fc_2(x))
         x = self.fc_3(x)
-
-        #x = [batch size, output dim]
-        
-        return x, h
+        return x
 
 def create_lenet(numclasses, img_shape):
     #for MNIST dataset
@@ -404,7 +394,7 @@ class AlexNet(nn.Module):
         
         self.classifier = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(256 * 2 * 2, 4096),
+            nn.Linear(1024, 4096),
             nn.ReLU(inplace = True),
             nn.Dropout(0.5),
             nn.Linear(4096, 4096),
@@ -502,7 +492,7 @@ def create_torchvisionmodel(modulename, numclasses, freezeparameters=True, pretr
         lastlayer=lastmoduleinlist[-1]
         if isinstance(lastlayer, nn.Linear):
             print('Linear layer')
-            newclassifier = nn.Linear(in_features=lastlayer.in_features, out_features=classnum)
+            newclassifier = nn.Linear(in_features=lastlayer.in_features, out_features=numclasses)
         elif isinstance(lastlayer, nn.Sequential):
             print('Sequential layer')
             lastlayerlist=list(lastlayer) #[-1] #last layer

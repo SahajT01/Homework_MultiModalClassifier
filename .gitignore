@@ -142,3 +142,9 @@ outputs/
 converted_model_quant.tflite
 converted_model_quantint.tflite
 data/
+.DS_Store
+*.pth
+*.md
+/TorchClassifier/hub/
+*.iml
+*.xml
