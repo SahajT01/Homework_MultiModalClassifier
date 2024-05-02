@@ -105,7 +105,7 @@ parser.add_argument('--optimizer', default='SGD', choices=['SGD', 'Adam', 'adamr
                     help='select the optimizer')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
-parser.add_argument('--batchsize', type=int, default=128,
+parser.add_argument('--batchsize', type=int, default=32,
                     help='batch size')
 parser.add_argument('--epochs', type=int, default=40,
                     help='epochs')
@@ -113,7 +113,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--classmap', default='TorchClassifier/Datasetutil/imagenet1000id2label.json', type=str, metavar='FILENAME',
                     help='path to class to idx mapping file (default: "")')
-parser.add_argument('--GPU', type=bool, default=True,
+parser.add_argument('--GPU', type=bool, default=False,
                     help='use GPU')
 parser.add_argument('--gpuid', default=0, type=int,
                     help='GPU id to use.')
@@ -196,7 +196,10 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                         outputs, _ = outputs
                     # convert output probabilities to predicted class
                     _, preds = torch.max(outputs, 1)#outputs size [32, 10]
-
+                    #print("Output shape:", outputs.shape)
+                    #print("Label shape:", labels.shape)
+                    outputs = outputs.view(inputs.size(0),-1)  # Assuming the total size is correct, reshape to [batch_size, num_classes]
+                    #print("Reshaped outputs shape:", outputs.shape)  # Verify reshaped output
                     # calculate the batch loss
                     loss = criterion(outputs, labels)
 
@@ -211,10 +214,10 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                 running_loss += loss.item() * inputs.size(0)#batch size
                 running_corrects += torch.sum(preds == labels.data)
                 # measure accuracy and record loss
-                acc1, acc5 = accuracy(outputs, labels, topk=(1, 5))
+                acc1 = accuracy(outputs, labels, topk=(1,))
                 losses.update(loss.item(), inputs.size(0))
                 top1.update(acc1[0], inputs.size(0))
-                top5.update(acc5[0], inputs.size(0))
+                #top5.update(acc5[0], inputs.size(0))
                 # measure elapsed time
                 batch_time.update(time.time() - end)
                 end = time.time()
@@ -401,6 +404,7 @@ def main():
     tensorboard_writer.flush()
 
     numclasses =len(class_names)
+    print("Number of classes: ", numclasses)
     model_ft = createTorchCNNmodel(args.model_name, numclasses, img_shape, args.pretrained)
 
         # add_graph() will trace the sample input through your model,

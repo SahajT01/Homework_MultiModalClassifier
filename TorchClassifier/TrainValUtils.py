@@ -131,9 +131,11 @@ class Summary(Enum):
     SUM = 2
     COUNT = 3
 
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
-    def __init__(self, name, fmt=':f', summary_type=Summary.AVERAGE):
+
+    def __init__(self, name, fmt=':f', summary_type='AVERAGE'):
         self.name = name
         self.fmt = fmt
         self.summary_type = summary_type
@@ -146,6 +148,8 @@ class AverageMeter(object):
         self.count = 0
 
     def update(self, val, n=1):
+        if isinstance(val, torch.Tensor):
+            val = val.item()  # Ensure scalar value
         self.val = val
         self.sum += val * n
         self.count += n
@@ -164,24 +168,29 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
     def __str__(self):
+        val = self.val.item() if isinstance(self.val, torch.Tensor) else self.val
+        avg = self.avg.item() if isinstance(self.avg, torch.Tensor) else self.avg
         fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
-        return fmtstr.format(**self.__dict__)
-    
+        return fmtstr.format(name=self.name, val=val, avg=avg)
+
     def summary(self):
+        avg = self.avg.item() if isinstance(self.avg, torch.Tensor) else self.avg
+        sum = self.sum if not isinstance(self.sum, torch.Tensor) else self.sum.item()
+        count = self.count if not isinstance(self.count, torch.Tensor) else self.count.item()
         fmtstr = ''
-        if self.summary_type is Summary.NONE:
+        if self.summary_type == 'NONE':
             fmtstr = ''
-        elif self.summary_type is Summary.AVERAGE:
+        elif self.summary_type == 'AVERAGE':
             fmtstr = '{name} {avg:.3f}'
-        elif self.summary_type is Summary.SUM:
+        elif self.summary_type == 'SUM':
             fmtstr = '{name} {sum:.3f}'
-        elif self.summary_type is Summary.COUNT:
+        elif self.summary_type == 'COUNT':
             fmtstr = '{name} {count:.3f}'
         else:
-            raise ValueError('invalid summary type %r' % self.summary_type)
-        
-        return fmtstr.format(**self.__dict__)
-    
+            raise ValueError('Invalid summary type %r' % self.summary_type)
+
+        return fmtstr.format(name=self.name, avg=avg, sum=sum, count=count)
+
 class ProgressMeter(object):
     def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
@@ -205,19 +214,18 @@ class ProgressMeter(object):
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk) #5
-        batch_size = target.size(0)
+    maxk = max(topk)
+    batch_size = target.size(0)
 
-        _, pred = output.topk(maxk, 1, True, True) #[85, 5]
-        pred = pred.t() #[5, 128]
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
 
-        res = []
-        for k in topk:
-            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
+    res = []
+    for k in topk:
+        correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+        res.append(correct_k.mul_(100.0 / batch_size))
+    return res
 
 def visualize_model(model, dataloaders, class_names, num_images=6, device="cuda"):
     was_training = model.training
